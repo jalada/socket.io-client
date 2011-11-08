@@ -1269,13 +1269,8 @@
 
   Transport.prototype.onData = function (data) {
     this.clearCloseTimeout();
-    
-    // If the connection in currently open (or in a reopening state) reset the close 
-    // timeout since we have just received data. This check is necessary so
-    // that we don't reset the timeout on an explicitly disconnected connection.
-    if (this.connected || this.connecting || this.reconnecting) {
-      this.setCloseTimeout();
-    }
+    this.clearHeartbeatTimeout();
+    this.setHeartbeatTimeout();
 
     if (data !== '') {
       // todo: we should only do decodePayload for xhr transports
@@ -1322,8 +1317,24 @@
       var self = this;
 
       this.closeTimeout = setTimeout(function () {
-        self.onDisconnect();
+        self.onDisconnect("transport closeTimeout");
       }, this.socket.closeTimeout);
+    }
+  };
+
+  /**
+   * Sets heartbeat timeout
+   *
+   * @api private
+   */
+
+  Transport.prototype.setHeartbeatTimeout = function () {
+    if (!this.heartbeatTimeout && this.socket.heartbeatTimeout != 0) {
+      var self = this;
+
+      this.heartbeatTimeout = setTimeout(function () {
+        self.onDisconnect("transport heartbeatTimeout");
+      }, this.socket.heartbeatTimeout);
     }
   };
 
@@ -1333,10 +1344,10 @@
    * @api private
    */
 
-  Transport.prototype.onDisconnect = function () {
+  Transport.prototype.onDisconnect = function (reason) {
     if (this.close && this.open) this.close();
     this.clearTimeouts();
-    this.socket.onDisconnect();
+    this.socket.onDisconnect(reason);
     return this;
   };
 
@@ -1365,6 +1376,19 @@
   };
 
   /**
+   * Clears heartbeat timeout
+   *
+   * @api private
+   */
+
+  Transport.prototype.clearHeartbeatTimeout = function () {
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  };
+
+  /**
    * Clear timeouts
    *
    * @api private
@@ -1372,6 +1396,7 @@
 
   Transport.prototype.clearTimeouts = function () {
     this.clearCloseTimeout();
+    this.clearHeartbeatTimeout();
 
     if (this.reopenTimeout) {
       clearTimeout(this.reopenTimeout);
